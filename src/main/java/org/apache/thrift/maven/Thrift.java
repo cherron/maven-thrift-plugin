@@ -12,10 +12,9 @@ import com.google.common.collect.ImmutableSet;
 import org.codehaus.plexus.util.cli.CommandLineException;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
-import org.codehaus.plexus.util.cli.DefaultConsumer;
-import org.codehaus.plexus.util.cli.StreamConsumer;
 
 import java.io.File;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -36,27 +35,28 @@ final class Thrift {
     private final String generator;
     private final ImmutableSet<File> thriftPathElements;
     private final ImmutableSet<File> thriftFiles;
-    private final File javaOutputDirectory;
+    private final File outputDirectory;
     private final CommandLineUtils.StringStreamConsumer output;
     private final CommandLineUtils.StringStreamConsumer error;
 
     /**
      * Constructs a new instance. This should only be used by the {@link Builder}.
      *
-     * @param executable          The path to the {@code thrift} executable.
-     * @param generator           The value for the {@code --gen} option.
-     * @param thriftPath          The directories in which to search for imports.
-     * @param thriftFiles         The thrift source files to compile.
-     * @param javaOutputDirectory The directory into which the java source files
-     *                            will be generated.
+     * @param executable      The path to the {@code thrift} executable.
+     * @param generator       The value for the {@code --gen} option.
+     * @param thriftPath      The directories in which to search for imports.
+     * @param thriftFiles     The thrift source files to compile.
+     * @param outputDirectory The directory into which source files will be
+     *                        generated.
      */
-    private Thrift(String executable, String generator, ImmutableSet<File> thriftPath,
-                   ImmutableSet<File> thriftFiles, File javaOutputDirectory) {
+    private Thrift(
+            String executable, String generator, ImmutableSet<File> thriftPath,
+            ImmutableSet<File> thriftFiles, File outputDirectory) {
         this.executable = checkNotNull(executable, "executable");
         this.generator = checkNotNull(generator, "generator");
         this.thriftPathElements = checkNotNull(thriftPath, "thriftPath");
         this.thriftFiles = checkNotNull(thriftFiles, "thriftFiles");
-        this.javaOutputDirectory = checkNotNull(javaOutputDirectory, "javaOutputDirectory");
+        this.outputDirectory = checkNotNull(outputDirectory, "outputDirectory");
         this.error = new CommandLineUtils.StringStreamConsumer();
         this.output = new CommandLineUtils.StringStreamConsumer();
     }
@@ -80,8 +80,13 @@ final class Thrift {
             }
         }
 
-        // result will always be 0 here.
-        moveGeneratedFiles();
+        /*
+          Moving generated files to omit their parent directory (e.g. gen-java)
+          is a problem when executing the plugin multiple times with different
+          generator configuration in order to produce multiple different kinds
+          of source from the Thrift IDL.
+         */
+        //moveGeneratedFiles();
 
         return 0;
     }
@@ -102,7 +107,7 @@ final class Thrift {
             command.add(thriftPathElement.toString());
         }
         command.add("-o");
-        command.add(javaOutputDirectory.toString());
+        command.add(outputDirectory.toString());
         command.add("--gen");
         command.add(generator);
         command.add(thriftFile.toString());
@@ -110,11 +115,11 @@ final class Thrift {
     }
 
     private void moveGeneratedFiles() {
-        File genDir = new File(javaOutputDirectory, GENERATED_JAVA);
+        File genDir = new File(outputDirectory, GENERATED_JAVA);
         final File[] generatedFiles = genDir.listFiles();
         for (File generatedFile : generatedFiles) {
             final String filename = generatedFile.getName();
-            final File targetLocation = new File(javaOutputDirectory, filename);
+            final File targetLocation = new File(outputDirectory, filename);
             if (targetLocation.exists()) {
                 if (!targetLocation.delete()) {
                     throw new RuntimeException("File Overwrite Failed: " + targetLocation.getPath());
@@ -142,6 +147,22 @@ final class Thrift {
      */
     public String getError() {
         return error.getOutput();
+    }
+
+    /** {@inheritDoc} */
+    public String toString() {
+        StringBuilder result = new StringBuilder();
+        Iterator<File> thriftFileIter = thriftFiles.iterator();
+        while (thriftFileIter.hasNext()) {
+            File thriftFile = thriftFileIter.next();
+            Commandline cl = new Commandline(executable);
+            cl.addArguments(buildThriftCommand(thriftFile).toArray(new String[]{}));
+            result.append(cl.toString());
+            if (thriftFileIter.hasNext()) {
+                result.append('\n');
+            }
+        }
+        return result.toString();
     }
 
     /**

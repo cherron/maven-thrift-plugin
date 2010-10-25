@@ -145,8 +145,14 @@ abstract class AbstractThriftMojo extends AbstractMojo {
                     final File outputDirectory = getOutputDirectory();
                     outputDirectory.mkdirs();
 
-                    // Quick fix to fix issues with two mvn installs in a row (ie no clean)
-                    cleanDirectory(outputDirectory);
+                    /*
+                      FileUtils#cleanDirectory was being called as a quick fix for
+                      issues with running two mvn installs in a row (ie no clean).
+                      However this becomes a problem if attempting to run the
+                      plugin multiple times with varying config during the same
+                      maven goal execution run.
+                    */
+                    //cleanDirectory(outputDirectory);
 
                     Thrift thrift = new Thrift.Builder(thriftExecutable, outputDirectory)
                             .setGenerator(generator)

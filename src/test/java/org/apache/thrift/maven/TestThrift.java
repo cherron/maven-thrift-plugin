@@ -15,6 +15,7 @@ import static org.junit.Assert.fail;
 
 public class TestThrift {
 
+    private static final String DEFAULT_THRIFT_PATH = "/usr/local/bin/thrift";
     private File testRootDir;
     private File idlDir;
     private File genJavaDir;
@@ -36,7 +37,12 @@ public class TestThrift {
 
         idlDir = new File(testResourceDir, "idl");
         genJavaDir = new File(testRootDir, Thrift.GENERATED_JAVA);
-        builder = new Thrift.Builder("thrift", testRootDir);
+        File thriftExecutable = new File(DEFAULT_THRIFT_PATH);
+        if (thriftExecutable.exists()) {
+            builder = new Thrift.Builder(DEFAULT_THRIFT_PATH, testRootDir);
+        } else {
+            builder = new Thrift.Builder("thrift", testRootDir);
+        }
         builder
             .setGenerator("java")
             .addThriftPathElement(idlDir);
@@ -65,11 +71,16 @@ public class TestThrift {
 
         // execute the compile
         final int result = thrift.compile();
+        if (result != 0) {
+            System.out.println("thrift failed output: " + thrift.getOutput());
+            System.out.println("thrift failed error: " + thrift.getError());
+            System.out.println("thrift command: [" + thrift.toString() + "]");
+        }
         assertEquals(0, result);
 
-        assertFalse("gen-java directory was not removed", genJavaDir.exists());
+        assertTrue("gen-java directory not found", genJavaDir.exists());
         assertTrue("generated java code doesn't exist",
-            new File(testRootDir, "shared/SharedService.java").exists());
+            new File(genJavaDir, "shared/SharedService.java").exists());
     }
 
     @Test
@@ -89,11 +100,11 @@ public class TestThrift {
         final int result = thrift.compile();
         assertEquals(0, result);
 
-        assertFalse("gen-java directory was not removed", genJavaDir.exists());
+        assertTrue("gen-java directory not found", genJavaDir.exists());
         assertTrue("generated java code doesn't exist",
-            new File(testRootDir, "shared/SharedService.java").exists());
+            new File(genJavaDir, "shared/SharedService.java").exists());
         assertTrue("generated java code doesn't exist",
-            new File(testRootDir, "tutorial/InvalidOperation.java").exists());
+            new File(genJavaDir, "tutorial/InvalidOperation.java").exists());
     }
 
     @Test
