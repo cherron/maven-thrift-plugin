@@ -18,7 +18,8 @@ public class TestThrift {
     private static final String DEFAULT_THRIFT_PATH = "/usr/local/bin/thrift";
     private File testRootDir;
     private File idlDir;
-    private File genJavaDir;
+    private File sharedJavaPackageDir;
+    private File tutorialJavaPackageDir;
     private Thrift.Builder builder;
 
     @Before
@@ -36,7 +37,12 @@ public class TestThrift {
         assertTrue("Unable to find test resources", testRootDir.exists());
 
         idlDir = new File(testResourceDir, "idl");
-        genJavaDir = new File(testRootDir, Thrift.GENERATED_JAVA);
+
+        //Derived from the package declaration within IDL file: shared.thrift
+        sharedJavaPackageDir = new File(testRootDir, "shared");
+        //Derived from the package declaration within IDL file: tutorial.thrift
+        tutorialJavaPackageDir = new File(testRootDir, "tutorial");        
+
         File thriftExecutable = new File(DEFAULT_THRIFT_PATH);
         if (thriftExecutable.exists()) {
             builder = new Thrift.Builder(DEFAULT_THRIFT_PATH, testRootDir);
@@ -67,7 +73,8 @@ public class TestThrift {
         final Thrift thrift = builder.build();
 
         assertTrue("File not found: shared.thrift", thriftFile.exists());
-        assertFalse("gen-java directory should not exist", genJavaDir.exists());
+        assertFalse("Generated 'shared' package directory should not yet exist",
+                    sharedJavaPackageDir.exists());
 
         // execute the compile
         final int result = thrift.compile();
@@ -78,9 +85,8 @@ public class TestThrift {
         }
         assertEquals(0, result);
 
-        assertTrue("gen-java directory not found", genJavaDir.exists());
-        assertTrue("generated java code doesn't exist",
-            new File(genJavaDir, "shared/SharedService.java").exists());
+        assertTrue("Generated java code doesn't exist",
+                   new File(sharedJavaPackageDir, "SharedService.java").exists());
     }
 
     @Test
@@ -94,17 +100,26 @@ public class TestThrift {
         final Thrift thrift = builder.build();
 
         assertTrue("File not found: shared.thrift", sharedThrift.exists());
-        assertFalse("gen-java directory should not exist", genJavaDir.exists());
+        assertFalse("Generated 'shared' package directory should not yet exist",
+                    sharedJavaPackageDir.exists());
+        assertFalse(
+                "Generated 'tutorial' package directory should not yet exist",
+                tutorialJavaPackageDir.exists());
 
         // execute the compile
         final int result = thrift.compile();
         assertEquals(0, result);
 
-        assertTrue("gen-java directory not found", genJavaDir.exists());
+        assertTrue("Generated 'shared' package directory not found",
+                    sharedJavaPackageDir.exists());
+        assertTrue("Generated 'tutorial' package directory not found",
+                    tutorialJavaPackageDir.exists());
+        assertTrue("Generated java code doesn't exist",
+                   new File(sharedJavaPackageDir,
+                            "SharedService.java").exists());
         assertTrue("generated java code doesn't exist",
-            new File(genJavaDir, "shared/SharedService.java").exists());
-        assertTrue("generated java code doesn't exist",
-            new File(genJavaDir, "tutorial/InvalidOperation.java").exists());
+                   new File(tutorialJavaPackageDir,
+                            "InvalidOperation.java").exists());
     }
 
     @Test
@@ -120,11 +135,25 @@ public class TestThrift {
         final Thrift thrift = builder.build();
 
         assertTrue(!thriftFile.exists());
-        assertFalse("gen-java directory should not exist", genJavaDir.exists());
+        int testDirFileCount = 0;
+        for (File file : testRootDir.listFiles()) {
+            testDirFileCount++;
+        }
+        assertTrue(
+                "Expected no files within testRootDir prior to compile attempt",
+                testDirFileCount == 0);
 
         // execute the compile
         final int result = thrift.compile();
         assertEquals(1, result);
+
+        testDirFileCount = 0;
+        for (File file : testRootDir.listFiles()) {
+            testDirFileCount++;
+        }
+        assertTrue(
+                "Expected no files within testRootDir after failed compile attempt",
+                testDirFileCount == 0);
     }
 
     @Test

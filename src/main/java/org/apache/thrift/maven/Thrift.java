@@ -17,25 +17,25 @@ import java.io.File;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * This class represents an invokable configuration of the {@code thrift}
  * compiler. The actual executable is invoked using the plexus
  * {@link Commandline}.
- * <p/>
- * This class currently only supports generating java source files.
  *
  * @author gak@google.com (Gregory Kick)
  */
 final class Thrift {
 
-    final static String GENERATED_JAVA = "gen-java";
+    final static String GENERATED_DIR_PREFIX = "gen-";
 
     private final String executable;
     private final String generator;
     private final ImmutableSet<File> thriftPathElements;
     private final ImmutableSet<File> thriftFiles;
     private final File outputDirectory;
+    private final File workingDirectory;    
     private final CommandLineUtils.StringStreamConsumer output;
     private final CommandLineUtils.StringStreamConsumer error;
 
@@ -59,6 +59,14 @@ final class Thrift {
         this.outputDirectory = checkNotNull(outputDirectory, "outputDirectory");
         this.error = new CommandLineUtils.StringStreamConsumer();
         this.output = new CommandLineUtils.StringStreamConsumer();
+        final File tmpDir = new File(System.getProperty("java.io.tmpdir"));
+        workingDirectory =
+                new File(tmpDir, "thrift-work-dir_" + UUID.randomUUID());
+        workingDirectory.deleteOnExit();
+        if (!workingDirectory.mkdir()) {
+            throw new RuntimeException("Failed to create working directory: " +
+                    workingDirectory.getPath());
+        }        
     }
 
     /**
@@ -80,13 +88,7 @@ final class Thrift {
             }
         }
 
-        /*
-          Moving generated files to omit their parent directory (e.g. gen-java)
-          is a problem when executing the plugin multiple times with different
-          generator configuration in order to produce multiple different kinds
-          of source from the Thrift IDL.
-         */
-        //moveGeneratedFiles();
+        moveGeneratedFiles();
 
         return 0;
     }
@@ -107,32 +109,82 @@ final class Thrift {
             command.add(thriftPathElement.toString());
         }
         command.add("-o");
-        command.add(outputDirectory.toString());
+        //Output to workingDirectory first, copy to outputDirectory afterwards
+        command.add(workingDirectory.toString());
         command.add("--gen");
         command.add(generator);
         command.add(thriftFile.toString());
         return ImmutableList.copyOf(command);
     }
 
+    /**
+     * Moves thrift-generated source from the temporary working directory to the
+     * specified output directory. In doing so, the thrift "gen-*" directory is
+     * omitted.
+     */
     private void moveGeneratedFiles() {
-        File genDir = new File(outputDirectory, GENERATED_JAVA);
+        File genDir = locateGenDir(workingDirectory);
         final File[] generatedFiles = genDir.listFiles();
         for (File generatedFile : generatedFiles) {
             final String filename = generatedFile.getName();
             final File targetLocation = new File(outputDirectory, filename);
             if (targetLocation.exists()) {
                 if (!targetLocation.delete()) {
-                    throw new RuntimeException("File Overwrite Failed: " + targetLocation.getPath());
+                    throw new RuntimeException("File Overwrite Failed: " +
+                            targetLocation.getPath());
                 }
             }
             if (!generatedFile.renameTo(targetLocation)) {
-                throw new RuntimeException("Rename Failed: " + targetLocation.getPath());
+                throw new RuntimeException(
+                        "Rename Failed: " + targetLocation.getPath());
             }
         }
 
         if (!genDir.delete()) {
-            throw new RuntimeException("Failed to delete directory: " + genDir.getPath());
+            throw new RuntimeException(
+                    "Failed to delete directory: " + genDir.getPath());
         }
+        if (!workingDirectory.delete()) {
+            throw new RuntimeException("Failed to delete directory: " +
+                    workingDirectory.getPath());
+        }
+    }
+
+    /**
+     * Locates a thrift-generated parent directory containing the generated
+     * source for a given execution of the thrift compiler. This implementation
+     * assumes that only a single directory will appear beneath {@link
+     * #workingDirectory}, and its name will be prefixed with {@link
+     * #GENERATED_DIR_PREFIX}.
+     *
+     * @param workingDirectory The working directory beneath which the generated
+     *                         source parent directory is sought.
+     *
+     * @return The generated source parent directory.
+     */
+    private File locateGenDir(File workingDirectory) {
+        File result = null;
+        int numMatches = 0;
+        for (File candidate : workingDirectory.listFiles()) {
+            if (candidate.isDirectory() &&
+                    candidate.getName().startsWith(GENERATED_DIR_PREFIX)) {
+                result = candidate;
+                numMatches++;
+            }
+        }
+        if (result == null) {
+            throw new RuntimeException(
+                    "Failed to find thrift-generated parent directory beneath workingDirectory: " +
+                            workingDirectory.getPath());
+        }
+        if (numMatches > 1) {
+            throw new RuntimeException(
+                    "Encountered more than one directory matching pattern: [" +
+                            GENERATED_DIR_PREFIX +
+                            "*] beneath workingDirectory: " +
+                            workingDirectory.getPath());
+        }
+        return result;
     }
 
     /**

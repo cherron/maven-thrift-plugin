@@ -129,6 +129,26 @@ abstract class AbstractThriftMojo extends AbstractMojo {
     private Set<String> excludes = ImmutableSet.of();
 
     /**
+     * Flag indicating whether the directory returned by {@link
+     * #getOutputDirectory()} should be cleaned before thrift is called and the
+     * generated source added.
+     *
+     * @parameter default-value="true"
+     * @required
+     */
+    private boolean cleanBeforeOutput;
+
+    /**
+     * Flag indicating whether the generated source should be added to the maven
+     * source root (or test source root). Set to {@code false} to skip
+     * compilation of the generated source (e.g. if C++ source was generated).
+     *
+     * @parameter default-value="true"
+     * @required
+     */
+    private boolean compileOutput;
+
+    /**
      * Executes the mojo.
      */
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -145,14 +165,9 @@ abstract class AbstractThriftMojo extends AbstractMojo {
                     final File outputDirectory = getOutputDirectory();
                     outputDirectory.mkdirs();
 
-                    /*
-                      FileUtils#cleanDirectory was being called as a quick fix for
-                      issues with running two mvn installs in a row (ie no clean).
-                      However this becomes a problem if attempting to run the
-                      plugin multiple times with varying config during the same
-                      maven goal execution run.
-                    */
-                    //cleanDirectory(outputDirectory);
+                    if (cleanBeforeOutput) {
+                        cleanDirectory(outputDirectory);
+                    }
 
                     Thrift thrift = new Thrift.Builder(thriftExecutable, outputDirectory)
                             .setGenerator(generator)
@@ -168,7 +183,10 @@ abstract class AbstractThriftMojo extends AbstractMojo {
                         throw new MojoFailureException(
                                 "thrift did not exit cleanly. Review output for more information.");
                     }
-                    attachFiles();
+                    
+                    if (compileOutput) {
+                        attachFiles();
+                    }
                 }
             } catch (IOException e) {
                 throw new MojoExecutionException("An IO error occured", e);

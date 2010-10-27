@@ -33,6 +33,9 @@ public final class ThriftTestCompileMojo extends AbstractThriftMojo {
 
     @Override
   protected void attachFiles() {
+    super.getLog()
+            .info("Adding outputDirectory to test compile source root. outputDirectory = [" +
+                    outputDirectory + "]");
     project.addTestCompileSourceRoot(outputDirectory.getAbsolutePath());
     projectHelper.addTestResource(project, thriftTestSourceRoot.getAbsolutePath(),
         ImmutableList.of("**/*.thrift"), ImmutableList.of());
