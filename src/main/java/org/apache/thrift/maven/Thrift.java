@@ -9,6 +9,7 @@ import static com.google.common.collect.Sets.newHashSet;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
+import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
@@ -62,7 +63,7 @@ final class Thrift {
         final File tmpDir = new File(System.getProperty("java.io.tmpdir"));
         workingDirectory =
                 new File(tmpDir, "thrift-work-dir_" + UUID.randomUUID());
-        workingDirectory.deleteOnExit();
+        //workingDirectory.deleteOnExit();
         if (!workingDirectory.mkdir()) {
             throw new RuntimeException("Failed to create working directory: " +
                     workingDirectory.getPath());
@@ -120,35 +121,33 @@ final class Thrift {
     /**
      * Moves thrift-generated source from the temporary working directory to the
      * specified output directory. In doing so, the thrift "gen-*" directory is
-     * omitted.
+     * omitted. Supports targeting an existing source tree, in case (for example)
+     * the generated source is being managed in VCS.
      */
+    @SuppressWarnings("unchecked")
     private void moveGeneratedFiles() {
         File genDir = locateGenDir(workingDirectory);
-        final File[] generatedFiles = genDir.listFiles();
-        for (File generatedFile : generatedFiles) {
-            final String filename = generatedFile.getName();
-            final File targetLocation = new File(outputDirectory, filename);
-            if (targetLocation.exists()) {
-                if (!targetLocation.delete()) {
-                    throw new RuntimeException("File Overwrite Failed: " +
-                            targetLocation.getPath());
+        try {
+            //List all generated files, relative to the gen-* directory
+            final List<File> generatedFiles =
+                    FileUtils.getFiles(genDir, "**", null, false);
+            for (File generatedFile : generatedFiles) {
+                if (!generatedFile.isDirectory()) {
+                    final File targetLocation =
+                            new File(outputDirectory, generatedFile.getPath());
+                    final File generatedFileAbsolute =
+                            new File(genDir, generatedFile.getPath());
+                    FileUtils.copyFile(generatedFileAbsolute, targetLocation);
                 }
             }
-            if (!generatedFile.renameTo(targetLocation)) {
-                throw new RuntimeException(
-                        "Rename Failed: " + targetLocation.getPath());
-            }
-        }
-
-        if (!genDir.delete()) {
+            FileUtils.deleteDirectory(workingDirectory);
+        } catch (Throwable t) {
             throw new RuntimeException(
-                    "Failed to delete directory: " + genDir.getPath());
-        }
-        if (!workingDirectory.delete()) {
-            throw new RuntimeException("Failed to delete directory: " +
-                    workingDirectory.getPath());
+                    "Failed to move file(s) to output directory", t);
         }
     }
+
+
 
     /**
      * Locates a thrift-generated parent directory containing the generated
